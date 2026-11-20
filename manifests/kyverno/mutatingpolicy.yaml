@@ -1,0 +1,50 @@
+# Act 3: when the Secret demo-ca changes, annotate the pod template of deployment/curl.
+# A changed pod template makes Kubernetes run a normal rolling update, so curl restarts and
+# reads the new CA. The Ingress controller and nginx are not touched.
+# Note: Kyverno also evaluates it against the Secret that already exists when the policy is created,
+# so curl restarts when the policy is applied (observed in the act 3 recording).
+apiVersion: policies.kyverno.io/v1
+kind: MutatingPolicy
+metadata:
+  name: restart-curl-on-ca-change
+spec:
+  evaluation:
+    mutateExisting:
+      enabled: true
+  # Trigger: an update of the Secret demo-ca in namespace demo
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["UPDATE"]
+        resources: ["secrets"]
+        resourceNames: ["demo-ca"]
+  matchConditions:
+    - name: only-namespace-demo
+      expression: request.object.metadata.namespace == "demo"
+  variables:
+    - name: secretVersion
+      expression: request.object.metadata.resourceVersion
+  # Target: deployment/curl in namespace demo
+  targetMatchConstraints:
+    resourceRules:
+      - apiGroups: ["apps"]
+        apiVersions: ["v1"]
+        operations: ["UPDATE"]
+        resources: ["deployments"]
+  targetMatchConditions:
+    - name: only-curl
+      expression: object.metadata.namespace == "demo" && object.metadata.name == "curl"
+  mutations:
+    - patchType: ApplyConfiguration
+      applyConfiguration:
+        expression: >
+          Object{
+            spec: Object.spec{
+              template: Object.spec.template{
+                metadata: Object.spec.template.metadata{
+                  annotations: {"demo/ca-secret-version": variables.secretVersion}
+                }
+              }
+            }
+          }

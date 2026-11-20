@@ -1,0 +1,8 @@
+# local CAs and certificates generated while following docs/00-setup.md (they contain private keys)
+pki/
+
+# OpenTofu: provider cache, state and the CA of cluster 2
+tofu/.terraform/
+tofu/*.tfstate
+tofu/*.tfstate.*
+tofu/kube2-ca.crt

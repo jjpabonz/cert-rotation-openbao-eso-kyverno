@@ -1,0 +1,53 @@
+# Client that validates the server certificate against the CA stored in the Secret demo-ca
+# (the certificate and key live in the Secret demo-tls, used by the Ingress).
+#
+# The CA is injected as an environment variable and written to /tmp/ca.crt at start-up.
+# Environment variables never change inside a running pod, so this workload only trusts a new CA
+# after a restart. That is the case Kyverno solves (see manifests/kyverno).
+# (A normal Secret volume would be refreshed by the kubelet and weaken the demonstration.)
+#
+# DEMO_HOST is the Ingress host of each cluster, set in ../cluster1 and ../cluster2. It resolves
+# through DNS, and curl validates that name against the certificate.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: curl
+  namespace: demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: curl
+  template:
+    metadata:
+      labels:
+        app: curl
+    spec:
+      containers:
+        - name: curl
+          image: curlimages/curl:8.11.1
+          env:
+            - name: CA_CRT
+              valueFrom:
+                secretKeyRef:
+                  name: demo-ca
+                  key: ca.crt
+            - name: DEMO_HOST
+              value: "CHANGE-ME"
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              printf '%s\n' "$CA_CRT" > /tmp/ca.crt
+              echo "curl started, CA loaded"
+              while true; do
+                ts=$(date +%H:%M:%S)
+                if curl -sS --max-time 5 --cacert /tmp/ca.crt \
+                     -o /tmp/body -w '%{certs}' https://$DEMO_HOST/ >/tmp/certs 2>/tmp/err; then
+                  serial=$(grep -m1 -i 'serial number' /tmp/certs | sed 's/.*: *//')
+                  san=$(grep -m1 'DNS:' /tmp/certs | sed 's/.*DNS:/DNS:/')
+                  echo "$ts OK   serial=$serial $san $(tr '\n' ' ' </tmp/body)"
+                else
+                  echo "$ts FAIL $(tr '\n' ' ' </tmp/err)"
+                fi
+                sleep 2
+              done

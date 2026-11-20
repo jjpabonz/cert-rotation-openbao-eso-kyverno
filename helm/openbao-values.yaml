@@ -1,0 +1,8 @@
+# Standalone OpenBao with persistent storage (chart defaults for everything else).
+# It starts sealed: docs/00-setup.md initializes and unseals it.
+# The API listens on plain HTTP in this setup; add TLS before using it for anything real.
+server:
+  ingress:
+    enabled: true
+    hosts:
+      - host: openbao.kube1.example.com
